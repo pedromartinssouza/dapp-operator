@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -28,10 +29,11 @@ type DappSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	DappName  string `json:"dappName,omitempty"`
-	Namespace string `json:"namespace,omitempty"`
-
-	Helm HelmSpec `json:"helm,omitempty"`
+	DappName     string              `json:"dappName,omitempty"`
+	Namespace    string              `json:"namespace,omitempty"`
+	Helm         HelmSpec            `json:"helm,omitempty"`
+	NodeSelector map[string]string   `json:"nodeSelector,omitempty"`
+	Tolerations  []corev1.Toleration `json:"tolerations,omitempty"`
 }
 
 type HelmSpec struct {

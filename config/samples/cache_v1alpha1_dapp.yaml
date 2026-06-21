@@ -14,3 +14,10 @@ spec:
     chartName: podinfo
     version: ">=6.0.0"
     repoURL: https://stefanprodan.github.io/podinfo
+  nodeSelector:
+    type: o-du
+  tolerations:
+  - key: dedicated
+    operator: Equal
+    value: o-du
+    effect: NoSchedule

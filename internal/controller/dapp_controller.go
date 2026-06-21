@@ -22,6 +22,7 @@ import (
 	"time"
 
 	helmv2 "github.com/fluxcd/helm-controller/api/v2"
+	fluxkustomize "github.com/fluxcd/pkg/apis/kustomize"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -31,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	sigsyaml "sigs.k8s.io/yaml"
 
 	cachev1alpha1 "github.com/pedromartinssouza/dapp-operator/api/v1alpha1"
 )
@@ -119,6 +121,10 @@ func (r *DappReconciler) reconcileHelmRelease(ctx context.Context, dapp *cachev1
 	helmRepoName := helmRepositoryName(dapp)
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, helmRelease, func() error {
+		postRenderers, err := buildSchedulingPostRenderer(dapp)
+		if err != nil {
+			return err
+		}
 		helmRelease.Spec = helmv2.HelmReleaseSpec{
 			Interval: metav1.Duration{Duration: 5 * time.Minute},
 			Chart: &helmv2.HelmChartTemplate{
@@ -131,6 +137,7 @@ func (r *DappReconciler) reconcileHelmRelease(ctx context.Context, dapp *cachev1
 					},
 				},
 			},
+			PostRenderers: postRenderers,
 		}
 		if dapp.Spec.Helm.ReleaseName != "" {
 			helmRelease.Spec.ReleaseName = dapp.Spec.Helm.ReleaseName
@@ -141,6 +148,51 @@ func (r *DappReconciler) reconcileHelmRelease(ctx context.Context, dapp *cachev1
 		return ctrl.SetControllerReference(dapp, helmRelease, r.Scheme)
 	})
 	return err
+}
+
+func buildSchedulingPostRenderer(dapp *cachev1alpha1.Dapp) ([]helmv2.PostRenderer, error) {
+	if len(dapp.Spec.NodeSelector) == 0 && len(dapp.Spec.Tolerations) == 0 {
+		return nil, nil
+	}
+
+	podSpec := map[string]interface{}{}
+	if len(dapp.Spec.NodeSelector) > 0 {
+		podSpec["nodeSelector"] = dapp.Spec.NodeSelector
+	}
+	if len(dapp.Spec.Tolerations) > 0 {
+		podSpec["tolerations"] = dapp.Spec.Tolerations
+	}
+
+	workloads := []struct{ apiVersion, kind string }{
+		{"apps/v1", "Deployment"},
+		{"apps/v1", "StatefulSet"},
+		{"apps/v1", "DaemonSet"},
+		{"batch/v1", "Job"},
+	}
+
+	var patches []fluxkustomize.Patch
+	for _, w := range workloads {
+		obj := map[string]interface{}{
+			"apiVersion": w.apiVersion,
+			"kind":       w.kind,
+			"metadata":   map[string]interface{}{"name": "placeholder"},
+			"spec": map[string]interface{}{
+				"template": map[string]interface{}{
+					"spec": podSpec,
+				},
+			},
+		}
+		data, err := sigsyaml.Marshal(obj)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling %s patch: %w", w.kind, err)
+		}
+		patches = append(patches, fluxkustomize.Patch{
+			Patch:  string(data),
+			Target: &fluxkustomize.Selector{Kind: w.kind},
+		})
+	}
+
+	return []helmv2.PostRenderer{{Kustomize: &helmv2.Kustomize{Patches: patches}}}, nil
 }
 
 func (r *DappReconciler) setReadyCondition(dapp *cachev1alpha1.Dapp, status metav1.ConditionStatus, reason, message string) {

@@ -1,0 +1,28 @@
+dapp-operator {{ .Chart.AppVersion }} has been installed in namespace {{ .Release.Namespace }}.
+
+The operator watches for Dapp resources cluster-wide. To install a dApp:
+
+  kubectl apply -f - <<EOF
+  apiVersion: cache.dapp-operator.com/v1alpha1
+  kind: Dapp
+  metadata:
+    name: my-dapp
+    namespace: {{ .Release.Namespace }}
+  spec:
+    dappName: my-dapp
+    namespace: my-dapp-system
+    helm:
+      releaseName: my-dapp
+      chartName: podinfo
+      version: ">=6.0.0"
+      repoURL: https://stefanprodan.github.io/podinfo
+  EOF
+
+Check status:
+
+  kubectl get dapp my-dapp -n {{ .Release.Namespace }}
+
+NOTE: CRDs are not updated automatically on `helm upgrade`. If the CRD schema
+changes in a new release, apply the updated CRD manually before upgrading:
+
+  kubectl apply -f https://raw.githubusercontent.com/pedromartinssouza/dapp-operator/main/config/crd/bases/cache.dapp-operator.com_dapps.yaml

@@ -1,0 +1,17 @@
+apiVersion: v2
+name: dapp-operator
+description: Kubernetes Operator for managing dApps via FluxCD HelmReleases
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - kubernetes
+  - operator
+  - fluxcd
+  - helmrelease
+home: https://github.com/pedromartinssouza/dapp-operator
+sources:
+  - https://github.com/pedromartinssouza/dapp-operator
+maintainers:
+  - name: Pedro Martins Souza
+    email: helenamasou@gmail.com

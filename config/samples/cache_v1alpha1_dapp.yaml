@@ -1,0 +1,16 @@
+apiVersion: cache.dapp-operator.com/v1alpha1
+kind: Dapp
+metadata:
+  labels:
+    app.kubernetes.io/name: dapp-operator
+    app.kubernetes.io/managed-by: kustomize
+  namespace: default
+  name: dapp-sample
+spec:
+  dappName: my-dapp
+  namespace: my-dapp-system
+  helm:
+    releaseName: my-dapp
+    chartName: podinfo
+    version: ">=6.0.0"
+    repoURL: https://stefanprodan.github.io/podinfo

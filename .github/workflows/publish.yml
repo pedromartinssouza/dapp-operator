@@ -1,4 +1,4 @@
-name: Publish Image
+name: Publish
 
 on:
   push:
@@ -6,16 +6,58 @@ on:
       - main
 
 jobs:
-  build-and-push:
-    name: Build and push to GHCR
+  publish:
+    name: Version, build, and push
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Determine version bump
+        id: bump
+        run: |
+          MSG=$(echo "${{ github.event.head_commit.message }}" | head -1)
+          if echo "$MSG" | grep -qiE "^breaking[- ]change:"; then
+            echo "type=major" >> $GITHUB_OUTPUT
+          elif echo "$MSG" | grep -qiE "^feat(ure)?:"; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+          elif echo "$MSG" | grep -qiE "^fix:"; then
+            echo "type=patch" >> $GITHUB_OUTPUT
+          else
+            echo "type=none" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Bump version
+        id: version
+        run: |
+          CURRENT=$(grep '^version:' charts/dapp-operator/Chart.yaml | awk '{print $2}')
+          MAJOR=$(echo $CURRENT | cut -d. -f1)
+          MINOR=$(echo $CURRENT | cut -d. -f2)
+          PATCH=$(echo $CURRENT | cut -d. -f3)
+
+          case "${{ steps.bump.outputs.type }}" in
+            major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR+1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH+1)) ;;
+          esac
+
+          NEW="${MAJOR}.${MINOR}.${PATCH}"
+          echo "value=${NEW}" >> $GITHUB_OUTPUT
+
+          if [ "${{ steps.bump.outputs.type }}" != "none" ]; then
+            sed -i "s/^version: .*/version: ${NEW}/" charts/dapp-operator/Chart.yaml
+            sed -i "s/^appVersion: .*/appVersion: \"${NEW}\"/" charts/dapp-operator/Chart.yaml
+            sed -i "s/^VERSION ?= .*/VERSION ?= ${NEW}/" Makefile
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add charts/dapp-operator/Chart.yaml Makefile
+            git commit -m "chore: bump version to ${NEW} [skip ci]"
+            git push
+          fi
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -24,19 +66,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
+      - name: Extract image metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/pedromartinssouza/dapp-operator
           tags: |
-            type=sha,prefix=sha-,format=short
+            type=raw,value=${{ steps.version.outputs.value }}
             type=raw,value=latest
 
-      - name: Build and push
+      - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Package Helm chart
+        run: helm package charts/dapp-operator --destination /tmp/helm-charts
+
+      - name: Push Helm chart to GHCR
+        run: |
+          helm registry login ghcr.io --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }}
+          helm push /tmp/helm-charts/dapp-operator-*.tgz oci://ghcr.io/pedromartinssouza/charts

@@ -2,8 +2,8 @@ apiVersion: v2
 name: dapp-operator
 description: Kubernetes Operator for managing dApps via FluxCD HelmReleases
 type: application
-version: 0.3.0
-appVersion: "0.3.0"
+version: 0.4.0
+appVersion: "0.4.0"
 keywords:
   - kubernetes
   - operator

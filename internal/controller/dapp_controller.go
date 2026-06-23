@@ -176,7 +176,7 @@ func buildSchedulingPostRenderer(dapp *cachev1alpha1.Dapp) ([]helmv2.PostRendere
 		{"batch/v1", "Job"},
 	}
 
-	var patches []fluxkustomize.Patch
+	patches := make([]fluxkustomize.Patch, 0, len(workloads))
 	for _, w := range workloads {
 		obj := map[string]interface{}{
 			"apiVersion": w.apiVersion,

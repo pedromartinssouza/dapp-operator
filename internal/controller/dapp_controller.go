@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	helmv2 "github.com/fluxcd/helm-controller/api/v2"
@@ -56,6 +57,7 @@ func (r *DappReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	if err := r.Get(ctx, req.NamespacedName, dapp); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	log.Info("reconciling dapp", "name", req.NamespacedName)
 
 	if err := r.reconcileHelmRepository(ctx, dapp); err != nil {
 		if apierrors.IsConflict(err) {
@@ -101,10 +103,14 @@ func (r *DappReconciler) reconcileHelmRepository(ctx context.Context, dapp *cach
 	}
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, helmRepo, func() error {
-		helmRepo.Spec = sourcev1.HelmRepositorySpec{
+		spec := sourcev1.HelmRepositorySpec{
 			URL:      dapp.Spec.Helm.RepoURL,
 			Interval: metav1.Duration{Duration: time.Minute},
 		}
+		if strings.HasPrefix(dapp.Spec.Helm.RepoURL, "oci://") {
+			spec.Type = "oci"
+		}
+		helmRepo.Spec = spec
 		return ctrl.SetControllerReference(dapp, helmRepo, r.Scheme)
 	})
 	return err

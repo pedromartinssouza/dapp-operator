@@ -1,0 +1,20 @@
+apiVersion: cache.dapp-operator.com/v1alpha1
+kind: Dapp
+metadata:
+  name: dapp-sample
+  namespace: dapp-operator-system
+spec:
+  dappName: dapp-sample
+  namespace: dapp-sample-system
+  helm:
+    releaseName: dapp-sample
+    chartName: dapp-sample-app
+    version: "0.1.0"
+    repoURL: oci://ghcr.io/pedromartinssouza/charts
+  nodeSelector:
+    type: o-du
+  tolerations:
+  - key: dedicated
+    operator: Equal
+    value: o-du
+    effect: NoSchedule

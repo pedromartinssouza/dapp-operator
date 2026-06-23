@@ -85,9 +85,17 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Package Helm chart
-        run: helm package charts/dapp-operator --destination /tmp/helm-charts
+        run: helm package charts/dapp-operator charts/dapp-sample-app --destination /tmp/helm-charts
 
-      - name: Push Helm chart to GHCR
+      - name: Push Helm charts to GHCR
         run: |
           helm registry login ghcr.io --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }}
           helm push /tmp/helm-charts/dapp-operator-*.tgz oci://ghcr.io/pedromartinssouza/charts
+          helm push /tmp/helm-charts/dapp-sample-app-*.tgz oci://ghcr.io/pedromartinssouza/charts
+
+      - name: Build and push sample app image
+        uses: docker/build-push-action@v6
+        with:
+          context: validation/app
+          push: true
+          tags: ghcr.io/pedromartinssouza/dapp-sample-app:latest

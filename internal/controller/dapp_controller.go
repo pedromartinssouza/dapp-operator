@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/types"
+
 	helmv2 "github.com/fluxcd/helm-controller/api/v2"
 	fluxkustomize "github.com/fluxcd/pkg/apis/kustomize"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
@@ -84,11 +86,18 @@ func (r *DappReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	dapp.Status.HelmRepositoryRef = fmt.Sprintf("%s/%s", dapp.Namespace, helmRepoName)
 	dapp.Status.HelmReleaseRef = fmt.Sprintf("%s/%s", dapp.Namespace, dapp.Name)
 
+	r.syncInstalledCondition(ctx, dapp)
+
 	if err := r.Status().Update(ctx, dapp); err != nil {
 		if apierrors.IsConflict(err) {
 			return ctrl.Result{Requeue: true}, nil
 		}
 		return ctrl.Result{}, err
+	}
+
+	installed := apimeta.FindStatusCondition(dapp.Status.Conditions, "Installed")
+	if installed == nil || installed.Status != metav1.ConditionTrue {
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
 	return ctrl.Result{}, nil
@@ -202,13 +211,33 @@ func buildSchedulingPostRenderer(dapp *cachev1alpha1.Dapp) ([]helmv2.PostRendere
 }
 
 func (r *DappReconciler) setReadyCondition(dapp *cachev1alpha1.Dapp, status metav1.ConditionStatus, reason, message string) {
+	r.setCondition(dapp, "Ready", status, reason, message)
+}
+
+func (r *DappReconciler) setCondition(dapp *cachev1alpha1.Dapp, condType string, status metav1.ConditionStatus, reason, message string) {
 	apimeta.SetStatusCondition(&dapp.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
+		Type:               condType,
 		Status:             status,
 		Reason:             reason,
 		Message:            message,
 		ObservedGeneration: dapp.Generation,
 	})
+}
+
+func (r *DappReconciler) syncInstalledCondition(ctx context.Context, dapp *cachev1alpha1.Dapp) {
+	helmRelease := &helmv2.HelmRelease{}
+	if err := r.Get(ctx, types.NamespacedName{Name: dapp.Name, Namespace: dapp.Namespace}, helmRelease); err != nil {
+		r.setCondition(dapp, "Installed", metav1.ConditionFalse, "HelmReleaseNotFound", err.Error())
+		return
+	}
+
+	hrReady := apimeta.FindStatusCondition(helmRelease.Status.Conditions, "Ready")
+	if hrReady == nil {
+		r.setCondition(dapp, "Installed", metav1.ConditionFalse, "Pending", "Waiting for Flux to install the chart")
+		return
+	}
+
+	r.setCondition(dapp, "Installed", hrReady.Status, hrReady.Reason, hrReady.Message)
 }
 
 func helmRepositoryName(dapp *cachev1alpha1.Dapp) string {

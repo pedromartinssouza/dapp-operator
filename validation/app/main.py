@@ -10,7 +10,7 @@ def hello():
 
 @app.route("/healthz")
 def health():
-    return "ok\n"
+    return "ok!\n"
 
 
 if __name__ == "__main__":
